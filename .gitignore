@@ -1,0 +1,69 @@
+################################
+# FRONTEND (frontend/)
+################################
+
+# Logs
+frontend/logs/
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+# Build outputs
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# Editor / OS files
+frontend/.vscode/*
+!frontend/.vscode/extensions.json
+frontend/.idea/
+frontend/.DS_Store
+frontend/*.suo
+frontend/*.ntvs*
+frontend/*.njsproj
+frontend/*.sln
+frontend/*.sw?
+
+
+################################
+# BACKEND (backend/)
+################################
+
+# Python cache
+backend/__pycache__/
+backend/**/*.pyc
+
+# Environment variables
+backend/.env
+backend/*.env
+backend/p1_env
+.env
+*.env
+
+# Databases
+backend/*.db
+backend/**/*.db
+
+# Alembic
+backend/migrations/__pycache__/
+
+# Logs
+backend/logs/
+backend/*.log
+
+
+################################
+# GENERAL
+################################
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
