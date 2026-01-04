@@ -1,7 +1,7 @@
 import { Dumbbell, ArrowDown, ArrowUp, Repeat, Weight, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type ExerciseType = 'bicep_curl' | 'squat' | 'push_up' | 'lunge' | 'deadlift' | 'shoulder_press';
+export type ExerciseType = 'bicep_curl' | 'squat' | 'pushup' | 'lunge' | 'deadlift' | 'shoulder_press';
 
 interface Exercise {
   id: ExerciseType;
@@ -24,7 +24,7 @@ const exercises: Exercise[] = [
     description: 'Lower body compound',
   },
   {
-    id: 'push_up',
+    id: 'pushup',
     name: 'Push Up',
     icon: <ArrowUp className="h-5 w-5" />,
     description: 'Upper body press',

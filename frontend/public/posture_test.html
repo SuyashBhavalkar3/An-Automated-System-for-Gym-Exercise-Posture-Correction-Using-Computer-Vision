@@ -1,0 +1,163 @@
+    <!doctype html>
+    <html>
+    <head>
+    <meta charset="utf-8" />
+    <title>Posture Test Page</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 16px; }
+        #controls { margin-bottom: 8px; }
+        canvas { border: 1px solid #ccc; }
+        #feedback { margin-top: 8px; font-weight: bold; }
+    </style>
+    </head>
+    <body>
+    <h3>Posture Test (local webcam)</h3>
+    <div id="controls">
+        Exercise:
+        <select id="exercise">
+        <option>squat</option>
+        <option>lunge</option>
+        <option>deadlift</option>
+        <option>pushup</option>
+        <option>shoulder_press</option>
+        <option>bicep_curl</option>
+        </select>
+        <label><input type="checkbox" id="skeleton" checked /> Show skeleton</label>
+        <label><input type="checkbox" id="verbose" /> Verbose logs</label>
+        <button id="start">Start</button>
+        <button id="stop" disabled>Stop</button>
+        <span id="status"></span>
+    </div>
+
+    <video id="video" width="640" height="480" autoplay style="display:none"></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+    <div id="feedback">Feedback: <span id="fb_text">n/a</span></div>
+
+    <script>
+    (function(){
+    // Default backend WebSocket address (change if your backend runs on a different host/port)
+    const BACKEND_WS = 'ws://localhost:8000/ws/posture';
+    const wsUrl = BACKEND_WS;
+    let ws = null;
+    let stream = null;
+    let sending = false;
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const fbText = document.getElementById('fb_text');
+    const status = document.getElementById('status');
+
+    const MAX_WIDTH = 640; // should match backend FRAME_MAX_WIDTH for best perf
+    const TARGET_FPS = 18; // send ~18 fps
+    const INTERVAL = 1000 / TARGET_FPS;
+
+    function log(...args){ if(document.getElementById('verbose').checked) console.log(...args); }
+
+    async function start() {
+        try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        await video.play();
+        // adjust canvas to video size maintaining max width
+        const scale = Math.min(1, MAX_WIDTH / video.videoWidth);
+        canvas.width = Math.floor(video.videoWidth * scale);
+        canvas.height = Math.floor(video.videoHeight * scale);
+
+        ws = new WebSocket(wsUrl);
+        ws.binaryType = 'arraybuffer';
+        ws.onopen = ()=>{ status.textContent = 'WS open'; log('WS open');
+            // send initial meta
+            ws.send(JSON.stringify({type:'meta', exercise: document.getElementById('exercise').value, skeleton: document.getElementById('skeleton').checked, verbose: document.getElementById('verbose').checked}));
+        };
+        ws.onmessage = async (ev)=>{
+            if(ev.data instanceof ArrayBuffer){
+            // binary skeleton image
+            const blob = new Blob([ev.data], { type: 'image/jpeg' });
+            const img = new Image();
+            img.onload = ()=>{ ctx.drawImage(img, 0, 0, canvas.width, canvas.height); }
+            img.src = URL.createObjectURL(blob);
+            return;
+            }
+            // text
+            try {
+            const data = JSON.parse(ev.data);
+            if(data.feedback) {
+                fbText.textContent = data.feedback.join(' | ');
+            }
+            if(data.skeleton_frame){
+                const img = new Image();
+                img.onload = ()=>{ ctx.drawImage(img, 0, 0, canvas.width, canvas.height); }
+                img.src = 'data:image/jpeg;base64,' + data.skeleton_frame;
+            }
+            if(data.skeleton_binary){
+                // next message should be binary; do nothing here
+            }
+            } catch(e){ console.error('Non-JSON message', e); }
+        };
+        ws.onclose = ()=>{ status.textContent = 'WS closed'; log('WS closed'); };
+        ws.onerror = (e)=>{ console.error('WS error', e); status.textContent = 'WS error'; };
+
+        sending = true;
+        document.getElementById('start').disabled = true;
+        document.getElementById('stop').disabled = false;
+        captureLoop();
+        } catch(err){
+        console.error('Cannot start camera',err);
+        status.textContent = 'camera error';
+        }
+    }
+
+    function stop(){
+        sending = false;
+        if(ws) { ws.close(); ws = null; }
+        if(stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+        document.getElementById('start').disabled = false;
+        document.getElementById('stop').disabled = true;
+        status.textContent = 'stopped';
+    }
+
+    async function captureLoop(){
+        let last = 0;
+        while(sending){
+        const now = performance.now();
+        if(now - last < INTERVAL){
+            await new Promise(r => setTimeout(r, 5));
+            continue;
+        }
+        last = now;
+
+        // draw video to canvas (this also acts as the local preview)
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // compress to JPEG blob with moderate quality to reduce bandwidth
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.6));
+        if(!ws || ws.readyState !== WebSocket.OPEN) continue;
+
+        // set metadata if changed
+        const meta = { type: 'meta', exercise: document.getElementById('exercise').value, skeleton: document.getElementById('skeleton').checked, verbose: document.getElementById('verbose').checked };
+        try{ ws.send(JSON.stringify(meta)); }catch(e){ }
+
+        // send binary frame (preferred) to avoid base64 overhead
+        try{
+            const arrayBuffer = await blob.arrayBuffer();
+            ws.send(arrayBuffer);
+        }catch(e){
+            // fallback: send base64 JSON
+            const reader = new FileReader();
+            reader.onloadend = ()=>{
+            const b64 = reader.result.split(',')[1];
+            try{ ws.send(JSON.stringify({ exercise: meta.exercise, frame: b64 })); } catch(err){ console.error('send fallback error', err); }
+            };
+            reader.readAsDataURL(blob);
+        }
+
+        }
+    }
+
+    document.getElementById('start').addEventListener('click', start);
+    document.getElementById('stop').addEventListener('click', stop);
+
+    })();
+    </script>
+    </body>
+    </html>

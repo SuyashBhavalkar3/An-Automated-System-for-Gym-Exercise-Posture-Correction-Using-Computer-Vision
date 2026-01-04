@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Play, Square, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Navbar } from '@/components/layout/Navbar';
@@ -11,12 +11,19 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 export default function DashboardPage() {
   const [selectedExercise, setSelectedExercise] = useState<ExerciseType>('bicep_curl');
   const [isSessionActive, setIsSessionActive] = useState(false);
+  const [showSkeleton, setShowSkeleton] = useState(true);
+  const [enablePosture, setEnablePosture] = useState(true);
+  const [debugMode, setDebugMode] = useState(false);
   
-  const { status, feedback, connect, disconnect, sendFrame, error } = useWebSocket();
+  const { status, feedback, connect, disconnect, sendFrame, sendMeta, lastSkeletonUrl, error } = useWebSocket() as any;
 
   const handleStartSession = () => {
     connect();
     setIsSessionActive(true);
+    // notify backend of current settings
+    try {
+      sendMeta({ type: 'meta', exercise: selectedExercise, skeleton: showSkeleton, verbose: debugMode });
+    } catch (e) { console.warn(e); }
   };
 
   const handleStopSession = () => {
@@ -25,8 +32,31 @@ export default function DashboardPage() {
   };
 
   const handleFrame = useCallback((base64Image: string) => {
+    if (!enablePosture) return;
+    // send base64 frame to backend
     sendFrame(base64Image, selectedExercise);
-  }, [sendFrame, selectedExercise]);
+  }, [sendFrame, selectedExercise, enablePosture]);
+
+  // handle control changes by notifying backend meta
+  const handleToggleSkeleton = (value: boolean) => {
+    setShowSkeleton(value);
+    try { sendMeta({ type: 'meta', skeleton: value }); } catch(e) { console.warn(e); }
+  };
+
+  const handleToggleDebug = (value: boolean) => {
+    setDebugMode(value);
+    try { sendMeta({ type: 'meta', verbose: value }); } catch(e) { console.warn(e); }
+  };
+
+  // When exercise changes during an active session, notify backend immediately
+  useEffect(() => {
+    if (isSessionActive) {
+      try {
+        console.debug('[Dashboard] sending exercise meta', selectedExercise);
+        sendMeta({ type: 'meta', exercise: selectedExercise });
+      } catch (e) { console.warn(e); }
+    }
+  }, [selectedExercise, isSessionActive, sendMeta]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -66,7 +96,26 @@ export default function DashboardPage() {
             <CameraFeed
               onFrame={handleFrame}
               isCapturing={isSessionActive && status === 'connected'}
+              showSkeleton={showSkeleton}
+              skeletonUrl={lastSkeletonUrl}
+              verbose={debugMode}
             />
+
+            {/* Controls: show skeleton, enable posture feedback, debug mode */}
+            <div className="flex items-center gap-4 mt-3">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={showSkeleton} onChange={(e) => handleToggleSkeleton(e.target.checked)} />
+                <span className="text-sm">Show Skeleton</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={enablePosture} onChange={(e) => setEnablePosture(e.target.checked)} />
+                <span className="text-sm">Enable Posture Feedback</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={debugMode} onChange={(e) => handleToggleDebug(e.target.checked)} />
+                <span className="text-sm">Debug Mode</span>
+              </label>
+            </div>
             
             {/* Feedback panel below camera */}
             <FeedbackPanel
@@ -82,7 +131,6 @@ export default function DashboardPage() {
               <ExerciseSelector
                 selected={selectedExercise}
                 onSelect={setSelectedExercise}
-                disabled={isSessionActive}
               />
             </div>
 

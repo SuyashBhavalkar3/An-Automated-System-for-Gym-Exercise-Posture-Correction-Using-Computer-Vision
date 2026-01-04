@@ -8,10 +8,19 @@ export interface PoseMessage {
   image: string; // base64 encoded frame
 }
 
+// Normalized response used by the app UI
 export interface PoseResponse {
-  status: 'ok' | 'no_pose' | 'incorrect';
-  feedback: string;
+  status: 'ok' | 'no_pose' | 'incorrect' | 'unknown';
+  feedback: string; // human readable message
   confidence?: number;
+}
+
+export interface RawServerMessage {
+  // backend may send different shapes; we normalize here
+  feedback?: string[] | string;
+  skeleton_frame?: string; // base64
+  skeleton_binary?: boolean;
+  throttled?: boolean;
 }
 
 interface UseWebSocketReturn {
@@ -19,7 +28,9 @@ interface UseWebSocketReturn {
   feedback: PoseResponse | null;
   connect: () => void;
   disconnect: () => void;
-  sendFrame: (base64Image: string, exercise: string) => void;
+  sendFrame: (data: string | ArrayBuffer, exercise: string) => void;
+  sendMeta: (meta: Record<string, any>) => void;
+  lastSkeletonUrl: string | null; // object URL for latest binary skeleton
   error: string | null;
 }
 
@@ -52,6 +63,7 @@ export function useWebSocket(): UseWebSocketReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [feedback, setFeedback] = useState<PoseResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastSkeletonUrl, setLastSkeletonUrl] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -78,25 +90,92 @@ export function useWebSocket(): UseWebSocketReturn {
       ws.onopen = () => {
         setStatus('connected');
         setError(null);
+        console.info('[useWebSocket] connected to', resolveWebSocketUrl());
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
+        console.warn('[useWebSocket] closed', ev.reason || ev.code);
         setStatus('disconnected');
         wsRef.current = null;
+        // attempt a retry after a delay
+        if (ev.code !== 1000) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.info('[useWebSocket] attempting reconnect...');
+            connect();
+          }, 1500);
+        }
       };
 
-      ws.onerror = () => {
+      ws.onerror = (ev) => {
+        console.error('[useWebSocket] error', ev);
         setStatus('error');
         setError('Failed to connect to posture detection server. Ensure backend is running.');
         wsRef.current = null;
       };
-
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         try {
-          const response: PoseResponse = JSON.parse(event.data);
-          setFeedback(response);
-        } catch {
-          console.error('Failed to parse WebSocket message');
+          // Binary skeleton image (server sends bytes after sending a JSON that has skeleton_binary)
+          if (event.data instanceof Blob) {
+            const blob = event.data as Blob;
+            // free previous URL
+            if (lastSkeletonUrl) {
+              URL.revokeObjectURL(lastSkeletonUrl);
+            }
+            const url = URL.createObjectURL(blob);
+            setLastSkeletonUrl(url);
+            console.debug('[useWebSocket] received binary skeleton blob');
+            return;
+          }
+
+          // Text message
+          const text = await (event.data as string);
+          const parsed: RawServerMessage = JSON.parse(text);
+          console.debug('[useWebSocket] received', parsed);
+
+          // Normalize feedback array/string into PoseResponse expected by UI
+          const fbArr: string[] = [];
+          if (Array.isArray(parsed.feedback)) {
+            fbArr.push(...parsed.feedback);
+          } else if (typeof parsed.feedback === 'string') {
+            fbArr.push(parsed.feedback);
+          }
+
+          // Determine status heuristically from messages
+          let statusGuess: PoseResponse['status'] = 'unknown';
+          if (fbArr.length === 0) {
+            statusGuess = 'no_pose';
+          } else {
+            const joined = fbArr.join(' ').toLowerCase();
+            if (joined.includes('please get fully into the frame') || joined.includes('no person')) {
+              statusGuess = 'no_pose';
+            } else if (joined.includes('excellent') || joined.includes('good') || joined.includes('nice') || joined.includes('great')) {
+              statusGuess = 'ok';
+            } else if (joined.includes('not supported')) {
+              statusGuess = 'unknown';
+            } else {
+              statusGuess = 'incorrect';
+            }
+          }
+
+          setFeedback({
+            status: statusGuess,
+            feedback: fbArr.join(' | '),
+          });
+
+          // If server sent base64 skeleton frame, set it as an object URL
+          if (parsed.skeleton_frame) {
+            // convert base64 to blob
+            const res = atob(parsed.skeleton_frame);
+            const buf = new Uint8Array(res.length);
+            for (let i = 0; i < res.length; i++) buf[i] = res.charCodeAt(i);
+            const blob = new Blob([buf], { type: 'image/jpeg' });
+            if (lastSkeletonUrl) URL.revokeObjectURL(lastSkeletonUrl);
+            const url = URL.createObjectURL(blob);
+            setLastSkeletonUrl(url);
+          }
+
+        } catch (err) {
+          console.error('[useWebSocket] Failed to handle message', err);
         }
       };
     } catch {
@@ -111,14 +190,34 @@ export function useWebSocket(): UseWebSocketReturn {
     setFeedback(null);
   }, [cleanup]);
 
-  const sendFrame = useCallback((base64Image: string, exercise: string) => {
+  const sendFrame = useCallback((data: string | ArrayBuffer, exercise: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      // Backend expects keys: exercise and frame
-      const payload = {
-        exercise,
-        frame: base64Image,
-      } as const;
-      wsRef.current.send(JSON.stringify(payload));
+      if (typeof data === 'string') {
+        // base64 string
+        const payload = {
+          exercise,
+          frame: data,
+        } as const;
+        console.debug('[useWebSocket] sending base64 frame for exercise', exercise);
+        wsRef.current.send(JSON.stringify(payload));
+      } else {
+        // binary ArrayBuffer - send directly
+        try {
+          // send a small JSON meta first so server knows exercise
+          const meta = { type: 'meta', exercise };
+          console.debug('[useWebSocket] send meta for binary frame', meta);
+          wsRef.current.send(JSON.stringify(meta));
+          wsRef.current.send(data);
+        } catch (e) {
+          console.error('[useWebSocket] send binary error', e);
+        }
+      }
+    }
+  }, []);
+
+  const sendMeta = useCallback((meta: Record<string, any>) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      try { wsRef.current.send(JSON.stringify(meta)); } catch (e) { console.error('[useWebSocket] sendMeta error', e); }
     }
   }, []);
 
@@ -132,6 +231,8 @@ export function useWebSocket(): UseWebSocketReturn {
     connect,
     disconnect,
     sendFrame,
+    sendMeta,
+    lastSkeletonUrl,
     error,
   };
 }
