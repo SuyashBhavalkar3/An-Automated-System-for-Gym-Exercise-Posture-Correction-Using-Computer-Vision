@@ -67,3 +67,14 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
+# Python virtual environments
+p1_env/
+venv/
+env/
+*.egg-info/
+.eggs/
+.env/
+.venv/
+__pycache__/
+*.pyc
