@@ -40,7 +40,7 @@ backend/**/*.pyc
 # Environment variables
 backend/.env
 backend/*.env
-backend/p1_env
+backend/req_env/
 .env
 *.env
 
@@ -69,7 +69,7 @@ Thumbs.db
 .vscode/
 
 # Python virtual environments
-p1_env/
+req_env/
 venv/
 env/
 *.egg-info/

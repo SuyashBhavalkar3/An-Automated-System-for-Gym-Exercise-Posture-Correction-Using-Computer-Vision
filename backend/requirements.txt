@@ -1,7 +1,12 @@
-fastapi>=0.95.0
-uvicorn[standard]>=0.22.0
-# Add other project-specific dependencies as needed (opencv-python, numpy, mediapipe, etc.)
-# Example:
-# numpy
-# opencv-python
-# mediapipe
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-multipart
+passlib[bcrypt]==1.7.4
+bcrypt==3.2.2
+python-dotenv
+opencv-python
+numpy
+mediapipe==0.10.9
+pydantic[email]
+PyJWT
