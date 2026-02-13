@@ -69,7 +69,7 @@ Thumbs.db
 .vscode/
 
 # Python virtual environments
-req_env/pyvenv.cfg
+backend/req_env/pyvenv.cfg
 venv/pyvenv.cfg
 req_env/
 venv/
