@@ -25,26 +25,26 @@ The Posture Analysis and Exercise Feedback System is designed to assist fitness 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Frontend (React + TypeScript)               │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ Authentication | Dashboard | Camera Feed | Feedback Panel│  │
-│  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ Authentication | Dashboard | Camera Feed | Feedback Panel│   │
+│  └──────────────────────────────────────────────────────────┘   │
 │                            ↕ WebSocket                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                   Backend (FastAPI + Python)                    │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ Authentication Module  │  Posture Analysis Module       │  │
-│  │ ├─ User Registration   │  ├─ MediaPipe Integration     │  │
-│  │ ├─ JWT Token Auth      │  ├─ Angle Calculation         │  │
-│  │ ├─ Password Hashing    │  ├─ Exercise Rules Engine     │  │
-│  │ └─ Session Management  │  ├─ Real-time Feedback        │  │
-│  │                        │  └─ Skeleton Visualization     │  │
-│  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ Authentication Module  │  Posture Analysis Module        │   │
+│  │ ├─ User Registration   │  ├─ MediaPipe Integration       │   │
+│  │ ├─ JWT Token Auth      │  ├─ Angle Calculation           │   │
+│  │ ├─ Password Hashing    │  ├─ Exercise Rules Engine       │   │
+│  │ └─ Session Management  │  ├─ Real-time Feedback          │   │
+│  │                        │  └─ Skeleton Visualization      │   │
+│  └──────────────────────────────────────────────────────────┘   │
 │                            ↕ SQLAlchemy ORM                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                   Data Layer (SQLite / PostgreSQL)              │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ User Table: {id, name, email, hashed_password, created_at}  │
-│  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ User Table: {id, name, email, hashed_password, created_at}   │
+│  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
